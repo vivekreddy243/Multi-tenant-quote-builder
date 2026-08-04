@@ -1,11 +1,17 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { CreateQuoteDto } from './dto/quote.dto';
 import { quotes, users } from './seed-data';
 import { calculateQuoteTotals } from './totals';
-import { Quote, User } from './quote.types';
+import {
+  Discount,
+  Quote,
+  User,
+} from './quote.types';
 
 @Injectable()
 export class QuotesService {
@@ -21,12 +27,59 @@ export class QuotesService {
     return user;
   }
 
+  private normalizeDiscount(
+    discountDto: CreateQuoteDto['discount'],
+  ): Discount | undefined {
+    if (!discountDto) {
+      return undefined;
+    }
+
+    if (discountDto.type === 'percentage') {
+      if (discountDto.value === undefined) {
+        throw new BadRequestException(
+          'Percentage discount requires value',
+        );
+      }
+
+      return {
+        type: 'percentage',
+        value: discountDto.value,
+      };
+    }
+
+    if (discountDto.valueCents === undefined) {
+      throw new BadRequestException(
+        'Fixed discount requires valueCents',
+      );
+    }
+
+    return {
+      type: 'fixed',
+      valueCents: discountDto.valueCents,
+    };
+  }
+
+  private createQuoteData(
+    quoteData: CreateQuoteDto,
+  ): Omit<Quote, 'id' | 'organizationId'> {
+    return {
+      customerName: quoteData.customerName,
+      status: quoteData.status,
+      sections: quoteData.sections,
+      discount: this.normalizeDiscount(
+        quoteData.discount,
+      ),
+      taxRate: quoteData.taxRate,
+    };
+  }
+
   listQuotes(userId: string): Quote[] {
     const user = this.getUserOrThrow(userId);
 
     return quotes.filter(
       (quote) =>
-        quote.organizationId === user.organizationId,
+        quote.organizationId ===
+        user.organizationId,
     );
   }
 
@@ -41,7 +94,9 @@ export class QuotesService {
     );
 
     if (!quote) {
-      throw new NotFoundException('Quote not found');
+      throw new NotFoundException(
+        'Quote not found',
+      );
     }
 
     return {
@@ -52,12 +107,15 @@ export class QuotesService {
 
   createQuote(
     userId: string,
-    quoteData: Omit<Quote, 'id' | 'organizationId'>,
+    quoteData: CreateQuoteDto,
   ) {
     const user = this.getUserOrThrow(userId);
 
+    const normalizedData =
+      this.createQuoteData(quoteData);
+
     const newQuote: Quote = {
-      ...quoteData,
+      ...normalizedData,
       id: `quote-${Date.now()}`,
       organizationId: user.organizationId,
     };
@@ -73,7 +131,7 @@ export class QuotesService {
   updateQuote(
     userId: string,
     quoteId: string,
-    quoteData: Omit<Quote, 'id' | 'organizationId'>,
+    quoteData: CreateQuoteDto,
   ) {
     const user = this.getUserOrThrow(userId);
 
@@ -85,11 +143,16 @@ export class QuotesService {
     );
 
     if (quoteIndex === -1) {
-      throw new NotFoundException('Quote not found');
+      throw new NotFoundException(
+        'Quote not found',
+      );
     }
 
+    const normalizedData =
+      this.createQuoteData(quoteData);
+
     const updatedQuote: Quote = {
-      ...quoteData,
+      ...normalizedData,
       id: quoteId,
       organizationId: user.organizationId,
     };
@@ -98,7 +161,8 @@ export class QuotesService {
 
     return {
       ...updatedQuote,
-      totals: calculateQuoteTotals(updatedQuote),
+      totals:
+        calculateQuoteTotals(updatedQuote),
     };
   }
 }

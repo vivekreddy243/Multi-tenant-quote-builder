@@ -7,8 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { CreateQuoteDto } from './dto/quote.dto';
 import { QuotesService } from './quotes.service';
-import { Quote } from './quote.types';
 
 @Controller('quotes')
 export class QuotesController {
@@ -37,11 +37,7 @@ export class QuotesController {
   @Post()
   createQuote(
     @Headers('x-user-id') userId: string,
-    @Body()
-    quoteData: Omit<
-      Quote,
-      'id' | 'organizationId'
-    >,
+    @Body() quoteData: CreateQuoteDto,
   ) {
     return this.quotesService.createQuote(
       userId,
@@ -53,11 +49,7 @@ export class QuotesController {
   updateQuote(
     @Headers('x-user-id') userId: string,
     @Param('id') quoteId: string,
-    @Body()
-    quoteData: Omit<
-      Quote,
-      'id' | 'organizationId'
-    >,
+    @Body() quoteData: CreateQuoteDto,
   ) {
     return this.quotesService.updateQuote(
       userId,
