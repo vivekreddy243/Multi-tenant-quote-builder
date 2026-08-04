@@ -1,122 +1,599 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useEffect, useMemo, useState } from 'react';
+import './App.css';
+import { getQuote, updateQuote } from './api/quotes';
+import type {
+  LineItem,
+  Quote,
+  Section,
+} from './types/quote';
 
-function App() {
-  const [count, setCount] = useState(0)
+const USER_ID = 'user-a1';
+const QUOTE_ID = 'quote-a1';
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+function calculatePreview(quote: Quote) {
+  const quoteSubtotalCents = quote.sections.reduce(
+    (quoteTotal, section) => {
+      const sectionSubtotal =
+        section.lineItems.reduce(
+          (lineTotal, item) =>
+            lineTotal +
+            Math.round(
+              item.quantity *
+                item.unitPriceCents,
+            ),
+          0,
+        );
 
-      <div className="ticks"></div>
+      const markupAmount = Math.round(
+        sectionSubtotal *
+          ((section.markupPercentage ?? 0) /
+            100),
+      );
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      return (
+        quoteTotal +
+        sectionSubtotal +
+        markupAmount
+      );
+    },
+    0,
+  );
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+  let discountAmountCents = 0;
+
+  if (
+    quote.discount?.type === 'percentage'
+  ) {
+    discountAmountCents = Math.round(
+      quoteSubtotalCents *
+        (quote.discount.value / 100),
+    );
+  }
+
+  if (quote.discount?.type === 'fixed') {
+    discountAmountCents =
+      quote.discount.valueCents;
+  }
+
+  discountAmountCents = Math.min(
+    quoteSubtotalCents,
+    Math.max(0, discountAmountCents),
+  );
+
+  const taxableAmountCents =
+    quoteSubtotalCents -
+    discountAmountCents;
+
+  const taxAmountCents = Math.round(
+    taxableAmountCents *
+      (quote.taxRate / 100),
+  );
+
+  return {
+    quoteSubtotalCents,
+    discountAmountCents,
+    taxableAmountCents,
+    taxAmountCents,
+    totalCents:
+      taxableAmountCents +
+      taxAmountCents,
+  };
 }
 
-export default App
+function formatMoney(valueCents: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(valueCents / 100);
+}
+
+function App() {
+  const [quote, setQuote] =
+    useState<Quote | null>(null);
+  const [loading, setLoading] =
+    useState(true);
+  const [saving, setSaving] =
+    useState(false);
+  const [message, setMessage] =
+    useState('');
+
+  useEffect(() => {
+    async function loadQuote() {
+      try {
+        const result = await getQuote(
+          QUOTE_ID,
+          USER_ID,
+        );
+
+        setQuote(result);
+      } catch {
+        setMessage('Unable to load quote.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadQuote();
+  }, []);
+
+  const previewTotals = useMemo(() => {
+    if (!quote) {
+      return null;
+    }
+
+    return calculatePreview(quote);
+  }, [quote]);
+
+  function updateSection(
+    sectionId: string,
+    changes: Partial<Section>,
+  ) {
+    setQuote((currentQuote) => {
+      if (!currentQuote) {
+        return currentQuote;
+      }
+
+      return {
+        ...currentQuote,
+        sections:
+          currentQuote.sections.map(
+            (section) =>
+              section.id === sectionId
+                ? {
+                    ...section,
+                    ...changes,
+                  }
+                : section,
+          ),
+      };
+    });
+  }
+
+  function updateLineItem(
+    sectionId: string,
+    itemId: string,
+    changes: Partial<LineItem>,
+  ) {
+    setQuote((currentQuote) => {
+      if (!currentQuote) {
+        return currentQuote;
+      }
+
+      return {
+        ...currentQuote,
+        sections:
+          currentQuote.sections.map(
+            (section) =>
+              section.id === sectionId
+                ? {
+                    ...section,
+                    lineItems:
+                      section.lineItems.map(
+                        (item) =>
+                          item.id === itemId
+                            ? {
+                                ...item,
+                                ...changes,
+                              }
+                            : item,
+                      ),
+                  }
+                : section,
+          ),
+      };
+    });
+  }
+
+  function addLineItem(sectionId: string) {
+    setQuote((currentQuote) => {
+      if (!currentQuote) {
+        return currentQuote;
+      }
+
+      const newItem: LineItem = {
+        id: `item-${Date.now()}`,
+        description: 'New item',
+        quantity: 1,
+        unitPriceCents: 0,
+      };
+
+      return {
+        ...currentQuote,
+        sections:
+          currentQuote.sections.map(
+            (section) =>
+              section.id === sectionId
+                ? {
+                    ...section,
+                    lineItems: [
+                      ...section.lineItems,
+                      newItem,
+                    ],
+                  }
+                : section,
+          ),
+      };
+    });
+  }
+
+  function removeLineItem(
+    sectionId: string,
+    itemId: string,
+  ) {
+    setQuote((currentQuote) => {
+      if (!currentQuote) {
+        return currentQuote;
+      }
+
+      return {
+        ...currentQuote,
+        sections:
+          currentQuote.sections.map(
+            (section) =>
+              section.id === sectionId
+                ? {
+                    ...section,
+                    lineItems:
+                      section.lineItems.filter(
+                        (item) =>
+                          item.id !== itemId,
+                      ),
+                  }
+                : section,
+          ),
+      };
+    });
+  }
+
+  async function handleSave() {
+    if (!quote) {
+      return;
+    }
+
+    setSaving(true);
+    setMessage('');
+
+    try {
+      const savedQuote =
+        await updateQuote(
+          quote,
+          USER_ID,
+        );
+
+      setQuote(savedQuote);
+      setMessage(
+        'Quote saved successfully.',
+      );
+    } catch {
+      setMessage(
+        'Unable to save quote.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="page">
+        Loading quote...
+      </main>
+    );
+  }
+
+  if (!quote || !previewTotals) {
+    return (
+      <main className="page">
+        {message}
+      </main>
+    );
+  }
+
+  return (
+    <main className="page">
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">
+            Multi-Tenant Quote Builder
+          </p>
+
+          <h1>Edit Quote</h1>
+
+          <p className="tenant-label">
+            Tenant:{' '}
+            {quote.organizationId}
+          </p>
+        </div>
+
+        <button
+          className="primary-button"
+          onClick={() =>
+            void handleSave()
+          }
+          disabled={saving}
+        >
+          {saving
+            ? 'Saving...'
+            : 'Save Quote'}
+        </button>
+      </header>
+
+      {message && (
+        <p className="message">
+          {message}
+        </p>
+      )}
+
+      <section className="card">
+        <h2>Quote details</h2>
+
+        <div className="form-grid">
+          <label>
+            Customer name
+
+            <input
+              value={quote.customerName}
+              onChange={(event) =>
+                setQuote({
+                  ...quote,
+                  customerName:
+                    event.target.value,
+                })
+              }
+            />
+          </label>
+
+          <label>
+            Status
+
+            <select
+              value={quote.status}
+              onChange={(event) =>
+                setQuote({
+                  ...quote,
+                  status:
+                    event.target
+                      .value as Quote['status'],
+                })
+              }
+            >
+              <option value="draft">
+                Draft
+              </option>
+
+              <option value="sent">
+                Sent
+              </option>
+
+              <option value="accepted">
+                Accepted
+              </option>
+            </select>
+          </label>
+
+          <label>
+            Tax rate %
+
+            <input
+              type="number"
+              min="0"
+              value={quote.taxRate}
+              onChange={(event) =>
+                setQuote({
+                  ...quote,
+                  taxRate: Number(
+                    event.target.value,
+                  ),
+                })
+              }
+            />
+          </label>
+        </div>
+      </section>
+
+      {quote.sections.map(
+        (section) => (
+          <section
+            className="card"
+            key={section.id}
+          >
+            <div className="section-heading">
+              <input
+                className="section-name"
+                value={section.name}
+                onChange={(event) =>
+                  updateSection(
+                    section.id,
+                    {
+                      name:
+                        event.target.value,
+                    },
+                  )
+                }
+              />
+
+              <label>
+                Markup %
+
+                <input
+                  type="number"
+                  min="0"
+                  value={
+                    section.markupPercentage ??
+                    0
+                  }
+                  onChange={(event) =>
+                    updateSection(
+                      section.id,
+                      {
+                        markupPercentage:
+                          Number(
+                            event.target
+                              .value,
+                          ),
+                      },
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="line-items">
+              {section.lineItems.map(
+                (item) => (
+                  <div
+                    className="line-item"
+                    key={item.id}
+                  >
+                    <input
+                      value={
+                        item.description
+                      }
+                      onChange={(event) =>
+                        updateLineItem(
+                          section.id,
+                          item.id,
+                          {
+                            description:
+                              event.target
+                                .value,
+                          },
+                        )
+                      }
+                    />
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={item.quantity}
+                      onChange={(event) =>
+                        updateLineItem(
+                          section.id,
+                          item.id,
+                          {
+                            quantity:
+                              Number(
+                                event.target
+                                  .value,
+                              ),
+                          },
+                        )
+                      }
+                    />
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={
+                        item.unitPriceCents /
+                        100
+                      }
+                      onChange={(event) =>
+                        updateLineItem(
+                          section.id,
+                          item.id,
+                          {
+                            unitPriceCents:
+                              Math.round(
+                                Number(
+                                  event
+                                    .target
+                                    .value,
+                                ) * 100,
+                              ),
+                          },
+                        )
+                      }
+                    />
+
+                    <strong>
+                      {formatMoney(
+                        item.quantity *
+                          item.unitPriceCents,
+                      )}
+                    </strong>
+
+                    <button
+                      className="danger-button"
+                      onClick={() =>
+                        removeLineItem(
+                          section.id,
+                          item.id,
+                        )
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ),
+              )}
+            </div>
+
+            <button
+              className="secondary-button"
+              onClick={() =>
+                addLineItem(
+                  section.id,
+                )
+              }
+            >
+              Add line item
+            </button>
+          </section>
+        ),
+      )}
+
+      <section className="card totals-card">
+        <h2>Live preview</h2>
+
+        <div className="total-row">
+          <span>Subtotal</span>
+
+          <strong>
+            {formatMoney(
+              previewTotals
+                .quoteSubtotalCents,
+            )}
+          </strong>
+        </div>
+
+        <div className="total-row">
+          <span>Discount</span>
+
+          <strong>
+            -
+            {formatMoney(
+              previewTotals
+                .discountAmountCents,
+            )}
+          </strong>
+        </div>
+
+        <div className="total-row">
+          <span>Tax</span>
+
+          <strong>
+            {formatMoney(
+              previewTotals
+                .taxAmountCents,
+            )}
+          </strong>
+        </div>
+
+        <div className="total-row grand-total">
+          <span>Total</span>
+
+          <strong>
+            {formatMoney(
+              previewTotals.totalCents,
+            )}
+          </strong>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+export default App;
