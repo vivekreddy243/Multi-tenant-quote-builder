@@ -49,4 +49,56 @@ export class QuotesService {
       totals: calculateQuoteTotals(quote),
     };
   }
+
+  createQuote(
+    userId: string,
+    quoteData: Omit<Quote, 'id' | 'organizationId'>,
+  ) {
+    const user = this.getUserOrThrow(userId);
+
+    const newQuote: Quote = {
+      ...quoteData,
+      id: `quote-${Date.now()}`,
+      organizationId: user.organizationId,
+    };
+
+    quotes.push(newQuote);
+
+    return {
+      ...newQuote,
+      totals: calculateQuoteTotals(newQuote),
+    };
+  }
+
+  updateQuote(
+    userId: string,
+    quoteId: string,
+    quoteData: Omit<Quote, 'id' | 'organizationId'>,
+  ) {
+    const user = this.getUserOrThrow(userId);
+
+    const quoteIndex = quotes.findIndex(
+      (quote) =>
+        quote.id === quoteId &&
+        quote.organizationId ===
+          user.organizationId,
+    );
+
+    if (quoteIndex === -1) {
+      throw new NotFoundException('Quote not found');
+    }
+
+    const updatedQuote: Quote = {
+      ...quoteData,
+      id: quoteId,
+      organizationId: user.organizationId,
+    };
+
+    quotes[quoteIndex] = updatedQuote;
+
+    return {
+      ...updatedQuote,
+      totals: calculateQuoteTotals(updatedQuote),
+    };
+  }
 }
