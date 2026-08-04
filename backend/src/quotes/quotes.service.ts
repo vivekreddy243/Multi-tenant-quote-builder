@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { quotes, users } from './seed-data';
+import { calculateQuoteTotals } from './totals';
 import { Quote, User } from './quote.types';
 
 @Injectable()
@@ -29,7 +30,7 @@ export class QuotesService {
     );
   }
 
-  getQuoteById(userId: string, quoteId: string): Quote {
+  getQuoteById(userId: string, quoteId: string) {
     const user = this.getUserOrThrow(userId);
 
     const quote = quotes.find(
@@ -43,6 +44,9 @@ export class QuotesService {
       throw new NotFoundException('Quote not found');
     }
 
-    return quote;
+    return {
+      ...quote,
+      totals: calculateQuoteTotals(quote),
+    };
   }
 }
