@@ -1,8 +1,4 @@
-import {
-  Organization,
-  Quote,
-  User,
-} from './quote.types';
+import { Organization, Quote, User } from './quote.types';
 
 export const organizations: Organization[] = [
   {

@@ -12,26 +12,16 @@ import { QuotesService } from './quotes.service';
 
 @Controller('quotes')
 export class QuotesController {
-  constructor(
-    private readonly quotesService: QuotesService,
-  ) {}
+  constructor(private readonly quotesService: QuotesService) {}
 
   @Get()
-  listQuotes(
-    @Headers('x-user-id') userId: string,
-  ) {
+  listQuotes(@Headers('x-user-id') userId: string) {
     return this.quotesService.listQuotes(userId);
   }
 
   @Get(':id')
-  getQuote(
-    @Headers('x-user-id') userId: string,
-    @Param('id') quoteId: string,
-  ) {
-    return this.quotesService.getQuoteById(
-      userId,
-      quoteId,
-    );
+  getQuote(@Headers('x-user-id') userId: string, @Param('id') quoteId: string) {
+    return this.quotesService.getQuoteById(userId, quoteId);
   }
 
   @Post()
@@ -39,10 +29,7 @@ export class QuotesController {
     @Headers('x-user-id') userId: string,
     @Body() quoteData: CreateQuoteDto,
   ) {
-    return this.quotesService.createQuote(
-      userId,
-      quoteData,
-    );
+    return this.quotesService.createQuote(userId, quoteData);
   }
 
   @Patch(':id')
@@ -51,10 +38,6 @@ export class QuotesController {
     @Param('id') quoteId: string,
     @Body() quoteData: CreateQuoteDto,
   ) {
-    return this.quotesService.updateQuote(
-      userId,
-      quoteId,
-      quoteData,
-    );
+    return this.quotesService.updateQuote(userId, quoteId, quoteData);
   }
 }

@@ -1,7 +1,4 @@
-export type QuoteStatus =
-  | 'draft'
-  | 'sent'
-  | 'accepted';
+export type QuoteStatus = 'draft' | 'sent' | 'accepted';
 
 export type Discount =
   | {
